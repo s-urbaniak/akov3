@@ -1,0 +1,6 @@
+apiVersion: my.domain/v1
+kind: NewField
+metadata:
+  name: new-field
+spec:
+  sizeStatusInClusters: foo

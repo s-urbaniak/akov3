@@ -1,0 +1,6 @@
+apiVersion: my.domain/v1
+kind: StatusBasedValidation
+metadata:
+  name: status-based-invalid
+spec:
+  foo: invalid

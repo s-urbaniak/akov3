@@ -1,0 +1,3 @@
+Run with:
+
+$ MCLI_PUBLIC_API_KEY=foo MCLI_PRIVATE_API_KEY=bar MCLI_OPS_MANAGER_URL=https://cloud-qa.mongodb.com/ make run

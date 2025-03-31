@@ -1,0 +1,8 @@
+apiVersion: my.domain/v1
+kind: OpenAPIValidation
+metadata:
+  name: openapi-valid
+spec:
+  foo: 123
+  godzilla-movie: FOOBAR
+---
