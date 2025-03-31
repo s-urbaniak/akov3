@@ -67,7 +67,7 @@ func (r *Reconciler) HandleIdle(ctx context.Context, u *unstructured.Unstructure
 	entry := getEntry[atlas20241113.FlexClusterDescriptionUpdate20241113](u)
 	response, _, err = atlasClients.SdkClient20241113001.FlexClustersApi.UpdateFlexCluster(ctx, status.GroupId, status.Name, entry).Execute()
 	if err != nil {
-		return result.Error(finalState, fmt.Errorf("failed to update flex cluster: %w", err))
+		return result.Error(state.StateUpdating, fmt.Errorf("failed to update flex cluster: %w", err))
 	}
 
 	setStatus(u, response)

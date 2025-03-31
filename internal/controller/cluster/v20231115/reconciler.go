@@ -73,20 +73,27 @@ func (r *Reconciler) HandleIdle(ctx context.Context, u *unstructured.Unstructure
 		AdvancedClusterDescription: entry,
 	}
 
-	p, err := jsondiff.CompareJSON(json.MustMarshal(entry), json.MustMarshal(response))
-	if err != nil {
-		return result.Error(finalState, fmt.Errorf("failed to compare states: %w", err))
-	}
-	logger := log.FromContext(ctx).WithName("cluster-controller")
-	logger.Info("patch", "patch", p.String())
+	r.logChanges(ctx, entry, response)
 
 	response, _, err = atlasClients.SdkClient20231115008.ClustersApi.UpdateClusterWithParams(ctx, params).Execute()
 	if err != nil {
-		return result.Error(finalState, fmt.Errorf("failed to update cluster: %w", err))
+		return result.Error(state.StateUpdating, fmt.Errorf("failed to update cluster: %w", err))
 	}
 	setStatus(u, response)
 
 	return result.NextState(state.StateUpdating, "Updating cluster")
+}
+
+func (r *Reconciler) logChanges(ctx context.Context, ako, atlas *atlas20231115.AdvancedClusterDescription) {
+	p, err := jsondiff.CompareJSON(json.MustMarshal(ako), json.MustMarshal(atlas))
+	if err != nil {
+		return
+	}
+	logger := log.FromContext(ctx).WithName("cluster-controller")
+
+	for _, op := range p {
+		logger.Info("patch", "op", op.String())
+	}
 }
 
 func (r *Reconciler) HandleUpserting(ctx context.Context, u *unstructured.Unstructured, currentState, finalState state.ResourceState) (ctrlstate.Result, error) {
