@@ -17,6 +17,9 @@ type ResourceState string
 const (
 	StateInitial ResourceState = "Initial"
 
+	StateImportRequested ResourceState = "Importing"
+	StateImported        ResourceState = "Imported"
+
 	StateCreating ResourceState = "Creating"
 	StateCreated  ResourceState = "Created"
 

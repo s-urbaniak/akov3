@@ -2,12 +2,15 @@ package v20231115
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/wI2L/jsondiff"
 	atlas20231115 "go.mongodb.org/atlas-sdk/v20231115008/admin"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/atlas"
@@ -21,6 +24,37 @@ import (
 
 type Reconciler struct {
 	ctrlstate.StateReconciler
+	Client client.Client
+}
+
+func (r *Reconciler) HandleImportRequested(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
+	atlasClients := atlas.FromContext(ctx)
+
+	externalName, ok := u.GetAnnotations()["mongodb.com/external-name"]
+	if !ok {
+		return result.Error(state.StateImportRequested, errors.New("missing mongodb.com/external-id"))
+	}
+
+	externalGroupID, ok := u.GetAnnotations()["mongodb.com/external-group-id"]
+	if !ok {
+		return result.Error(state.StateImportRequested, errors.New("missing mongodb.com/external-id"))
+	}
+
+	response, _, err := atlasClients.SdkClient20231115008.ClustersApi.GetCluster(ctx, externalGroupID, externalName).Execute()
+	if err != nil {
+		return result.Error(state.StateImportRequested, fmt.Errorf("failed to get group: %w", err))
+	}
+
+	internalunstructured.SetNestedFieldObject(u.Object, response, "spec", "v20231115", "entry")
+
+	patchErr := r.Client.Patch(ctx, u, client.RawPatch(types.MergePatchType, json.MustMarshal(u.Object)))
+	if patchErr != nil {
+		return result.Error(state.StateImportRequested, fmt.Errorf("failed to patch cluster: %w", err))
+	}
+
+	setStatus(u, response)
+
+	return result.NextState(state.StateImported, "Cluster imported")
 }
 
 func (r *Reconciler) HandleInitial(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
@@ -38,9 +72,12 @@ func (r *Reconciler) HandleInitial(ctx context.Context, u *unstructured.Unstruct
 
 	return result.NextState(state.StateCreating, "Creating cluster")
 }
+func (r *Reconciler) HandleImported(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
+	return r.HandleIdle(ctx, u, state.StateUpdated)
+}
 
 func (r *Reconciler) HandleCreated(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
-	return r.HandleIdle(ctx, u, state.StateCreated)
+	return r.HandleIdle(ctx, u, state.StateUpdated)
 }
 
 func (r *Reconciler) HandleUpdated(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {

@@ -20,6 +20,9 @@ func NextState(s state.ResourceState, msg string) (ctrlstate.Result, error) {
 	case state.StateCreated:
 		return ctrlstate.Result{NextState: s, StateMsg: msg}, nil
 
+	case state.StateImported:
+		return ctrlstate.Result{NextState: s, StateMsg: msg}, nil
+
 	case state.StateUpdated:
 		return ctrlstate.Result{NextState: s, StateMsg: msg}, nil
 
@@ -27,6 +30,9 @@ func NextState(s state.ResourceState, msg string) (ctrlstate.Result, error) {
 		return ctrlstate.Result{NextState: s, StateMsg: msg}, nil
 
 	case state.StateInitial:
+		return ctrlstate.Result{NextState: s, StateMsg: msg}, nil
+
+	case state.StateImportRequested:
 		return ctrlstate.Result{NextState: s, StateMsg: msg}, nil
 
 	case state.StateCreating:

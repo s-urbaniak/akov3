@@ -2,11 +2,14 @@ package v20231115
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	atlas20231115 "go.mongodb.org/atlas-sdk/v20231115008/admin"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/atlas"
 	ctrlstate "github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/controller/state"
@@ -19,6 +22,31 @@ import (
 
 type Reconciler struct {
 	ctrlstate.StateReconciler
+	Client client.Client
+}
+
+func (r *Reconciler) HandleImportRequested(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
+	atlasClients := atlas.FromContext(ctx)
+	id, ok := u.GetAnnotations()["mongodb.com/external-id"]
+	if !ok {
+		return result.Error(state.StateImportRequested, errors.New("missing mongodb.com/external-id"))
+	}
+
+	response, _, err := atlasClients.SdkClient20231115008.ProjectsApi.GetProject(ctx, id).Execute()
+	if err != nil {
+		return result.Error(state.StateImportRequested, fmt.Errorf("failed to get group: %w", err))
+	}
+
+	internalunstructured.SetNestedFieldObject(u.Object, response, "spec", "v20231115", "entry")
+
+	patchErr := r.Client.Patch(ctx, u, client.RawPatch(types.MergePatchType, json.MustMarshal(u.Object)))
+	if patchErr != nil {
+		return result.Error(state.StateImportRequested, fmt.Errorf("failed to patch group: %w", err))
+	}
+
+	setStatus(u, response)
+
+	return result.NextState(state.StateImported, "Project imported")
 }
 
 func (r *Reconciler) HandleInitial(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
@@ -33,6 +61,10 @@ func (r *Reconciler) HandleInitial(ctx context.Context, u *unstructured.Unstruct
 	internalunstructured.SetNestedFieldObject(u.Object, response, "status", "v20231115")
 
 	return result.NextState(state.StateCreated, "Project created.")
+}
+
+func (r *Reconciler) HandleImported(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
+	return r.HandleIdle(ctx, u, state.StateImported, state.StateUpdating)
 }
 
 func (r *Reconciler) HandleCreated(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {

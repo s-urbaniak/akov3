@@ -27,6 +27,8 @@ type Result struct {
 
 type StateReconciler interface {
 	HandleInitial(context.Context, *unstructured.Unstructured) (Result, error)
+	HandleImportRequested(context.Context, *unstructured.Unstructured) (Result, error)
+	HandleImported(context.Context, *unstructured.Unstructured) (Result, error)
 	HandleCreating(context.Context, *unstructured.Unstructured) (Result, error)
 	HandleCreated(context.Context, *unstructured.Unstructured) (Result, error)
 	HandleUpdating(context.Context, *unstructured.Unstructured) (Result, error)
@@ -111,6 +113,11 @@ func NewReadyCondition(u *unstructured.Unstructured, result Result) metav1.Condi
 		readyReason = ReadyReasonPending
 		msg = "Resource is in initial state."
 
+	case state.StateImportRequested:
+		cond = metav1.ConditionFalse
+		readyReason = ReadyReasonPending
+		msg = "Resource is being imported."
+
 	case state.StateCreating:
 		cond = metav1.ConditionFalse
 		readyReason = ReadyReasonPending
@@ -130,6 +137,11 @@ func NewReadyCondition(u *unstructured.Unstructured, result Result) metav1.Condi
 		cond = metav1.ConditionFalse
 		readyReason = ReadyReasonPending
 		msg = "Resource is pending."
+
+	case state.StateImported:
+		cond = metav1.ConditionTrue
+		readyReason = ReadyReasonSettled
+		msg = "Resource is imported."
 
 	case state.StateCreated:
 		cond = metav1.ConditionTrue
@@ -169,6 +181,12 @@ func (r *Reconciler) ReconcileState(ctx context.Context, u *unstructured.Unstruc
 		err error
 	)
 
+	if policy, ok := u.GetAnnotations()["mongodb.com/managementPolicy"]; ok && prevState == state.StateInitial {
+		if policy == "Import" {
+			prevState = state.StateImportRequested
+		}
+	}
+
 	if !u.GetDeletionTimestamp().IsZero() && prevState != state.StateDeleting {
 		prevState = state.StateDeletionRequested
 	}
@@ -176,6 +194,10 @@ func (r *Reconciler) ReconcileState(ctx context.Context, u *unstructured.Unstruc
 	switch prevState {
 	case state.StateInitial:
 		result, err = r.Reconciler.HandleInitial(ctx, u)
+	case state.StateImportRequested:
+		result, err = r.Reconciler.HandleImportRequested(ctx, u)
+	case state.StateImported:
+		result, err = r.Reconciler.HandleImported(ctx, u)
 	case state.StateCreating:
 		result, err = r.Reconciler.HandleCreating(ctx, u)
 	case state.StateCreated:

@@ -105,8 +105,10 @@ func main() {
 				Kind:    "Group",
 			},
 			Reconciler: &state.Reconciler{
-				Client:     mgr.GetClient(),
-				Reconciler: &group20231115.Reconciler{},
+				Client: mgr.GetClient(),
+				Reconciler: &group20231115.Reconciler{
+					Client: mgr.GetClient(),
+				},
 			},
 		},
 
@@ -129,8 +131,10 @@ func main() {
 				Kind:    "Cluster",
 			},
 			Reconciler: &state.Reconciler{
-				Client:     mgr.GetClient(),
-				Reconciler: &cluster20231115.Reconciler{},
+				Client: mgr.GetClient(),
+				Reconciler: &cluster20231115.Reconciler{
+					Client: mgr.GetClient(),
+				},
 			},
 		},
 
