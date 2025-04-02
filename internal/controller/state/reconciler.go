@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -181,9 +182,11 @@ func (r *Reconciler) ReconcileState(ctx context.Context, u *unstructured.Unstruc
 		err error
 	)
 
-	if policy, ok := u.GetAnnotations()["mongodb.com/managementPolicy"]; ok && prevState == state.StateInitial {
-		if policy == "Import" {
+	if prevState == state.StateInitial {
+		for _, a := range u.GetAnnotations() {
+			strings.HasPrefix(a, "mongodb.com/external-")
 			prevState = state.StateImportRequested
+			break
 		}
 	}
 

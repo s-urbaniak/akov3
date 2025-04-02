@@ -47,8 +47,8 @@ func (r *Reconciler) HandleImportRequested(ctx context.Context, u *unstructured.
 
 	internalunstructured.SetNestedFieldObject(u.Object, response, "spec", "v20231115", "entry")
 
-	patchErr := r.Client.Patch(ctx, u, client.RawPatch(types.MergePatchType, json.MustMarshal(u.Object)))
-	if patchErr != nil {
+	err = r.Client.Patch(ctx, u, client.RawPatch(types.MergePatchType, json.MustMarshal(u.Object)))
+	if err != nil {
 		return result.Error(state.StateImportRequested, fmt.Errorf("failed to patch cluster: %w", err))
 	}
 
