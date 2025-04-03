@@ -183,10 +183,10 @@ func (r *Reconciler) ReconcileState(ctx context.Context, u *unstructured.Unstruc
 	)
 
 	if prevState == state.StateInitial {
-		for _, a := range u.GetAnnotations() {
-			strings.HasPrefix(a, "mongodb.com/external-")
-			prevState = state.StateImportRequested
-			break
+		for key := range u.GetAnnotations() {
+			if strings.HasPrefix(key, "mongodb.com/external-") {
+				prevState = state.StateImportRequested
+			}
 		}
 	}
 

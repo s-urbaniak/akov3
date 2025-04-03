@@ -32,12 +32,12 @@ func (r *Reconciler) HandleImportRequested(ctx context.Context, u *unstructured.
 
 	externalName, ok := u.GetAnnotations()["mongodb.com/external-name"]
 	if !ok {
-		return result.Error(state.StateImportRequested, errors.New("missing mongodb.com/external-id"))
+		return result.Error(state.StateImportRequested, errors.New("missing mongodb.com/external-name"))
 	}
 
 	externalGroupID, ok := u.GetAnnotations()["mongodb.com/external-group-id"]
 	if !ok {
-		return result.Error(state.StateImportRequested, errors.New("missing mongodb.com/external-id"))
+		return result.Error(state.StateImportRequested, errors.New("missing mongodb.com/external-group-id"))
 	}
 
 	response, _, err := atlasClients.SdkClient20231115008.ClustersApi.GetCluster(ctx, externalGroupID, externalName).Execute()
