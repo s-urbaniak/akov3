@@ -2,11 +2,14 @@ package v20241113
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	atlas20241113 "go.mongodb.org/atlas-sdk/v20241113001/admin"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/atlas"
 	ctrlstate "github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/controller/state"
@@ -19,6 +22,45 @@ import (
 
 type Reconciler struct {
 	ctrlstate.StateReconciler
+	Client client.Client
+}
+
+func (r *Reconciler) HandleImportRequested(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
+	atlasClients := atlas.FromContext(ctx)
+
+	externalName, ok := u.GetAnnotations()["mongodb.com/external-name"]
+	if !ok {
+		return result.Error(state.StateImportRequested, errors.New("missing mongodb.com/external-name"))
+	}
+
+	externalGroupID, ok := u.GetAnnotations()["mongodb.com/external-group-id"]
+	if !ok {
+		return result.Error(state.StateImportRequested, errors.New("missing mongodb.com/external-group-id"))
+	}
+
+	params := &atlas20241113.GetFlexClusterApiParams{
+		GroupId: externalGroupID,
+		Name:    externalName,
+	}
+	response, _, err := atlasClients.SdkClient20241113001.FlexClustersApi.GetFlexClusterWithParams(ctx, params).Execute()
+	if err != nil {
+		return result.Error(state.StateImportRequested, fmt.Errorf("failed to get group: %w", err))
+	}
+
+	internalunstructured.SetNestedFieldObject(u.Object, response, "spec", "v20241113", "entry")
+
+	err = r.Client.Patch(ctx, u, client.RawPatch(types.MergePatchType, json.MustMarshal(u.Object)))
+	if err != nil {
+		return result.Error(state.StateImportRequested, fmt.Errorf("failed to patch cluster: %w", err))
+	}
+
+	setStatus(u, response)
+
+	return result.NextState(state.StateImported, "Cluster imported")
+}
+
+func (r *Reconciler) HandleImported(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
+	return r.HandleIdle(ctx, u, state.StateUpdated)
 }
 
 func (r *Reconciler) HandleInitial(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
@@ -78,8 +120,7 @@ func (r *Reconciler) HandleIdle(ctx context.Context, u *unstructured.Unstructure
 func (r *Reconciler) HandleUpserting(ctx context.Context, u *unstructured.Unstructured, currentState, finalState state.ResourceState) (ctrlstate.Result, error) {
 	atlasClients := atlas.FromContext(ctx)
 
-	params := getParams[atlas20241113.GetFlexClusterApiParams](u)
-	params.Name = getEntry[atlas20241113.FlexClusterDescriptionCreate20241113](u).GetName()
+	params := getStatus[atlas20241113.GetFlexClusterApiParams](u)
 	response, _, err := atlasClients.SdkClient20241113001.FlexClustersApi.GetFlexClusterWithParams(ctx, params).Execute()
 	if err != nil {
 		return result.Error(currentState, fmt.Errorf("failed to get cluster: %w", err))
@@ -138,10 +179,8 @@ func (r *Reconciler) HandleDeleting(ctx context.Context, u *unstructured.Unstruc
 func (r *Reconciler) updateStatus(ctx context.Context, u *unstructured.Unstructured) (*atlas20241113.FlexClusterDescription20241113, error) {
 	atlasClients := atlas.FromContext(ctx)
 
-	params := getParams[atlas20241113.GetFlexClusterApiParams](u)
-	params.Name = getEntry[atlas20241113.FlexClusterDescriptionCreate20241113](u).GetName()
+	params := getStatus[atlas20241113.GetFlexClusterApiParams](u)
 	response, _, err := atlasClients.SdkClient20241113001.FlexClustersApi.GetFlexClusterWithParams(ctx, params).Execute()
-
 	if err == nil {
 		setStatus(u, response)
 	}

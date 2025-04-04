@@ -119,8 +119,10 @@ func main() {
 				Kind:    "FlexCluster",
 			},
 			Reconciler: &state.Reconciler{
-				Client:     mgr.GetClient(),
-				Reconciler: &flexv20241113.Reconciler{},
+				Client: mgr.GetClient(),
+				Reconciler: &flexv20241113.Reconciler{
+					Client: mgr.GetClient(),
+				},
 			},
 		},
 

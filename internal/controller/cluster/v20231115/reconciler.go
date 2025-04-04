@@ -72,6 +72,7 @@ func (r *Reconciler) HandleInitial(ctx context.Context, u *unstructured.Unstruct
 
 	return result.NextState(state.StateCreating, "Creating cluster")
 }
+
 func (r *Reconciler) HandleImported(ctx context.Context, u *unstructured.Unstructured) (ctrlstate.Result, error) {
 	return r.HandleIdle(ctx, u, state.StateUpdated)
 }
