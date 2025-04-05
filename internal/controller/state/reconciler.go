@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -46,11 +47,12 @@ const (
 )
 
 type Reconciler struct {
-	Client     client.Client
-	Reconciler StateReconciler
+	Client      client.Client
+	Reconciler  StateReconciler
+	RateLimiter workqueue.TypedRateLimiter[reconcile.Request]
 }
 
-func (r *Reconciler) ReconcileUnstructured(ctx context.Context, u *unstructured.Unstructured) (reconcile.Result, error) {
+func (r *Reconciler) ReconcileUnstructured(ctx context.Context, req ctrl.Request, u *unstructured.Unstructured) (reconcile.Result, error) {
 	logger := log.FromContext(ctx).WithName("state-controller")
 	prevStatus := status.GetStatus(u)
 	prevState := state.GetState(prevStatus.Status.Conditions)
@@ -83,14 +85,8 @@ func (r *Reconciler) ReconcileUnstructured(ctx context.Context, u *unstructured.
 		return result.Result, reconcileErr
 	}
 
-	ready := NewReadyCondition(u, result)
+	ready := r.NewReadyCondition(result, req, reconcileErr)
 	ready.ObservedGeneration = observedGeneration
-
-	if reconcileErr != nil {
-		ready.Status = metav1.ConditionFalse
-		ready.Reason = ReadyReasonError
-		ready.Message = reconcileErr.Error()
-	}
 
 	meta.SetStatusCondition(&newStatus.Status.Conditions, ready)
 	internalunstructured.SetNestedFieldSlice(u.Object, newStatus.Status.Conditions, "status", "conditions")
@@ -102,7 +98,7 @@ func (r *Reconciler) ReconcileUnstructured(ctx context.Context, u *unstructured.
 	return result.Result, reconcileErr
 }
 
-func NewReadyCondition(u *unstructured.Unstructured, result Result) metav1.Condition {
+func (r *Reconciler) NewReadyCondition(result Result, req ctrl.Request, reconcileErr error) metav1.Condition {
 	var (
 		readyReason, msg string
 		cond             metav1.ConditionStatus
@@ -159,6 +155,27 @@ func NewReadyCondition(u *unstructured.Unstructured, result Result) metav1.Condi
 		readyReason = ReadyReasonError
 		msg = fmt.Sprintf("unknown state: %s", result.NextState)
 
+	}
+
+	if reconcileErr != nil {
+		cond = metav1.ConditionFalse
+		readyReason = ReadyReasonError
+		msg = reconcileErr.Error()
+	}
+
+	switch {
+	case reconcileErr != nil:
+		cond = metav1.ConditionFalse
+		readyReason = ReadyReasonError
+		nextReconcile := r.RateLimiter.When(req)
+		msg = fmt.Sprintf("%v. Next reconcile after %v.", reconcileErr.Error(), nextReconcile)
+
+	case result.RequeueAfter > 0:
+		msg = fmt.Sprintf("%v Next reconcile after %v.", msg, result.RequeueAfter)
+
+	case result.Requeue:
+		nextReconcile := r.RateLimiter.When(req)
+		msg = fmt.Sprintf("%v Next reconcile after %v.", msg, nextReconcile)
 	}
 
 	return metav1.Condition{

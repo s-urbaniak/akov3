@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	cluster20231115 "github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/controller/cluster/v20231115"
 	flexv20241113 "github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/controller/flex/v20241113"
@@ -43,6 +44,7 @@ import (
 	networkpermissionentry20231115 "github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/controller/networkpermissionentry/v20231115"
 	"github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/controller/state"
 	"github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/controller/unstructured"
+	"github.com/mongodb/mongodb-atlas-kubernetes/v3/internal/ratelimiter"
 )
 
 var (
@@ -97,15 +99,19 @@ func main() {
 		SetupWithManager(mgr ctrl.Manager) error
 	}
 
+	rl := ratelimiter.NewRateLimiter[reconcile.Request]()
+
 	for _, reconciler := range []managerInitializer{
 		&unstructured.Reconciler{
+			RateLimiter: rl,
 			GVK: schema.GroupVersionKind{
 				Group:   "atlas.generated.mongodb.com",
 				Version: "v1",
 				Kind:    "Group",
 			},
 			Reconciler: &state.Reconciler{
-				Client: mgr.GetClient(),
+				RateLimiter: rl,
+				Client:      mgr.GetClient(),
 				Reconciler: &group20231115.Reconciler{
 					Client: mgr.GetClient(),
 				},
@@ -113,13 +119,15 @@ func main() {
 		},
 
 		&unstructured.Reconciler{
+			RateLimiter: rl,
 			GVK: schema.GroupVersionKind{
 				Group:   "atlas.generated.mongodb.com",
 				Version: "v1",
 				Kind:    "FlexCluster",
 			},
 			Reconciler: &state.Reconciler{
-				Client: mgr.GetClient(),
+				RateLimiter: rl,
+				Client:      mgr.GetClient(),
 				Reconciler: &flexv20241113.Reconciler{
 					Client: mgr.GetClient(),
 				},
@@ -127,13 +135,15 @@ func main() {
 		},
 
 		&unstructured.Reconciler{
+			RateLimiter: rl,
 			GVK: schema.GroupVersionKind{
 				Group:   "atlas.generated.mongodb.com",
 				Version: "v1",
 				Kind:    "Cluster",
 			},
 			Reconciler: &state.Reconciler{
-				Client: mgr.GetClient(),
+				RateLimiter: rl,
+				Client:      mgr.GetClient(),
 				Reconciler: &cluster20231115.Reconciler{
 					Client: mgr.GetClient(),
 				},
@@ -141,14 +151,16 @@ func main() {
 		},
 
 		&unstructured.Reconciler{
+			RateLimiter: rl,
 			GVK: schema.GroupVersionKind{
 				Group:   "atlas.generated.mongodb.com",
 				Version: "v1",
 				Kind:    "NetworkPermissionEntry",
 			},
 			Reconciler: &state.Reconciler{
-				Client:     mgr.GetClient(),
-				Reconciler: &networkpermissionentry20231115.Reconciler{},
+				RateLimiter: rl,
+				Client:      mgr.GetClient(),
+				Reconciler:  &networkpermissionentry20231115.Reconciler{},
 			},
 		},
 	} {
